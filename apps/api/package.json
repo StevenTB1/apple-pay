@@ -1,0 +1,38 @@
+{
+  "name": "@apple-pay/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "prisma generate && next dev --hostname 127.0.0.1 --port 3001",
+    "build": "prisma generate && next build",
+    "start": "next start --hostname 127.0.0.1 --port 3001",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "prisma generate && next typegen && tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "db:migrate": "prisma migrate deploy",
+    "shortcut:token": "tsx src/scripts/create-shortcut-token.ts"
+  },
+  "dependencies": {
+    "graphql": "^16.11.0",
+    "graphql-yoga": "5.24.5",
+    "next": "16.4.0",
+    "@prisma/client": "7.10.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "pg": "8.23.1",
+    "@next/env": "16.4.0",
+    "server-only": "0.0.1",
+    "@js-temporal/polyfill": "0.5.1",
+    "@supabase/supabase-js": "2.117.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "eslint": "^10",
+    "eslint-config-next": "16.4.0",
+    "typescript": "^5",
+    "prisma": "7.10.0",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15"
+  }
+}

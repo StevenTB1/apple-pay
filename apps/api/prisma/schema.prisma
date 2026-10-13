@@ -1,0 +1,40 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["tracker"]
+}
+
+enum CaptureSource {
+  APPLE_PAY
+  MANUAL
+
+  @@schema("tracker")
+}
+
+model Transaction {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId            String        @db.Uuid
+  source             CaptureSource
+  sourceId           String?       @db.VarChar(100)
+  eventId            String?       @db.VarChar(128)
+  captureFingerprint String?       @db.Char(64)
+  originalCapture    Json?
+  capturedAt         DateTime?     @db.Timestamptz(3)
+  receivedAt         DateTime      @default(now()) @db.Timestamptz(3)
+  occurredAt         DateTime      @db.Timestamptz(3)
+  merchant           String?       @db.VarChar(200)
+  cardLabel          String?       @db.VarChar(100)
+  amount             Decimal?      @db.Decimal(20, 4)
+  currency           String?       @db.VarChar(3)
+  excluded           Boolean       @default(false)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@unique([ownerId, sourceId, eventId], name: "captureIdentity")
+  @@index([ownerId, occurredAt, id])
+  @@schema("tracker")
+}
