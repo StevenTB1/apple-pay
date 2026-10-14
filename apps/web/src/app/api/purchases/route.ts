@@ -21,28 +21,14 @@ export async function POST(request: Request) {
   if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
     return errorResponse("A JSON request is required.", 415);
   }
-  const reader = request.body?.getReader();
-  if (!reader) return errorResponse("A JSON request is required.", 400);
+  const text = await request.text();
+  if (text.length > 32 * 1024) return errorResponse("Request body is too large.", 413);
   let body: { action?: unknown; variables?: unknown };
   try {
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      bytes += chunk.value.byteLength;
-      if (bytes > 32 * 1024) {
-        await reader.cancel();
-        return errorResponse("Request body is too large.", 413);
-      }
-      chunks.push(chunk.value);
-    }
-    body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    body = JSON.parse(text);
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid body");
   } catch {
     return errorResponse("The request must contain valid JSON.", 400);
-  } finally {
-    reader.releaseLock();
   }
   const action = body.action;
   if (typeof action !== "string" || !Object.hasOwn(operations, action)) {

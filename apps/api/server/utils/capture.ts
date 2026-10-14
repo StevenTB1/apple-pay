@@ -101,17 +101,15 @@ function currencyFromRaw(raw: string | null): string | null {
 }
 
 // A phone may send only raw Wallet text; the server fills in the id, time, amount and currency.
-export function normalizeCapture(input: unknown, defaultSourceId?: string): NormalizedCapture {
-  const data = inputRecord(input, [
-    "source_id", "event_id", "captured_at", "amount", "currency", "merchant", "card_label", "raw_amount",
-  ]);
+export function normalizeCapture(input: unknown): NormalizedCapture {
+  const data = inputRecord(input, ["source_id", "event_id", "captured_at", "currency", "merchant", "card_label", "raw_amount"]);
   const raw_amount = optionalText(data.raw_amount, "raw_amount", 200);
   const currency = currencyCode(data.currency) ?? currencyFromRaw(raw_amount);
   return {
-    source_id: identifier(data.source_id ?? defaultSourceId, "source_id", 3, 100),
+    source_id: identifier(data.source_id, "source_id", 3, 100),
     event_id: identifier(data.event_id ?? randomUUID(), "event_id", 16, 128),
     captured_at: instantString(data.captured_at ?? new Date().toISOString(), "captured_at"),
-    amount: amountText(data.amount, currency) ?? amountFromRaw(raw_amount, currency),
+    amount: amountFromRaw(raw_amount, currency),
     currency,
     merchant: optionalText(data.merchant, "merchant", 200),
     card_label: optionalText(data.card_label, "card_label", 100),

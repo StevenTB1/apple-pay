@@ -1,153 +1,107 @@
 # Apple Pay spending tracker
 
-A private personal spending tracker designed to record in-person Apple Pay purchases made with your iPhone and help you review spending from a mobile web app on home Wi-Fi.
+Records Apple Pay purchases from an iPhone Shortcut and shows monthly CAD spending in a web dashboard.
 
-**Current status: backend implementation prepared.** The two Next.js apps use TypeScript and npm workspaces. The API now contains Prisma storage, capture acknowledgement/replay handling, upload-only authentication, Supabase owner-token verification, monthly CAD totals, manual entries, and corrections. The initial migration is saved for review and has **not been applied**. Verification at this stage is limited to static source review and compiler/lint checks. The dashboard still shows an empty setup state; its sign-in and spending screens, phone Shortcuts, and deployment are the next milestones.
+- Dashboard: https://apple-pay-web.vercel.app
+- API: https://apple-pay-api.vercel.app
 
-## Local development
+## How it works
 
-Use Node.js 24; the repository includes an `.nvmrc` for nvm. Install dependencies once from the repository root:
+1. A Wallet automation on the iPhone runs after a payment with a selected card.
+2. The Shortcut POSTs the transaction, as-is, to `/api/graphql/capture` with an upload-only token.
+3. The API works out the merchant, amount and currency, and stores the purchase in Supabase. The original input is kept with the row.
+4. You sign in to the dashboard with a Supabase email/password account to review, correct, exclude or add purchases.
 
-```sh
-nvm use
-npm ci
-```
-
-Start the dashboard:
-
-```sh
-npm run dev
-```
-
-Open [the local dashboard](http://127.0.0.1:3000). In another terminal, start the API:
-
-```sh
-npm run dev:api
-```
-
-The API's [root endpoint](http://127.0.0.1:3001) returns service status. Its [GraphQL endpoint](http://127.0.0.1:3001/api/graphql) accepts the public query `{ status }`, which returns `"api"`. Status describes the service, without checking database connectivity. Starting either app and compiling the API need no credentials; purchase operations require private configuration and the reviewed migration.
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Dashboard on port 3000, bound to your computer's loopback interface |
-| `npm run dev:api` | Headless API on port 3001, bound to loopback |
-| `npm run dev:lan` | Dashboard on port 3000, accessible over home Wi-Fi |
-| `npm run lint` | ESLint checks for both apps |
-| `npm run typecheck` | Generate Next.js route types and check TypeScript for both apps |
-| `npm run build` | Compile production builds for both apps |
-| `npm start` | Serve the built dashboard locally |
-| `npm run start:api` | Serve the built API locally |
-| `npm run prisma:validate` | Validate the Prisma schema without changing a database |
-| `npm run db:migrate` | Apply checked-in migrations using `DIRECT_URL`; run only after migration review |
-
-For phone access, copy `apps/web/.env.example` to `apps/web/.env.local`, set `DEV_ORIGIN_HOST` to your computer's LAN hostname or IP without a protocol or port, and run `npm run dev:lan`. Open `http://<your-computer-LAN-IP>:3000` on your phone. Both devices must be on the same network. Owner sign-in is a later implementation step; this starter contains no personal records.
-
-Each app has its own `.env.example`. Next.js loads environment files from the corresponding app directory. Real `.env.local` files are ignored by Git. Database credentials and the phone credential belong only in the API's server environment. API dev/build/typecheck commands generate the Prisma client automatically; they never apply migrations.
-
-## Supabase and secrets
-
-For this personal app, use `apps/api/.env.local` locally and Vercel environment settings when the API is deployed. An additional secrets service such as Infisical is deferred until multiple people or environments need shared secret management.
-
-Copy `apps/api/.env.example` to `apps/api/.env.local` and configure these values privately:
-
-| Setting | Purpose |
-| --- | --- |
-| `DIRECT_URL` | Direct or session-pooler connection for reviewed migrations |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | The API's only database access (supabase-js); also verifies sign-in tokens |
-
-Use the connection strings from the dedicated project's Connect dialog, with TLS configured there. The runtime database role must own the migrated tables so it bypasses RLS; Data API users can only read their own rows. Create your Supabase email/password account in the Auth dashboard, then sign in to the dashboard.
-
-`DIRECT_URL` is a `postgresql://` session-pooler URL used only for migrations; the running API never opens a PostgreSQL connection.
-
-When you are ready to configure the phone, sign in to the dashboard and press **Create phone token**. Paste the `ap_…` secret into the Shortcut; it is shown once, and creating another revokes it.
-
-Review [the initial migration](apps/api/prisma/migrations/20261013000000_initial_tracker/migration.sql) before applying it. It creates `users` (synced from `auth.users`) and `transaction` in `public`, exact decimal fields, capture constraints, an immutability trigger, and owner-only read RLS policies. **No migration has been applied by this implementation.** After review and private connection setup, `npm run db:migrate` applies the checked-in migrations; it is never part of startup or build.
-
-See [API setup and request examples](apps/api/docs/setup.md) for the complete contract. Connection guidance comes from [Supabase's Prisma guide](https://supabase.com/docs/guides/database/prisma); owner sign-in uses [Supabase email/password authentication](https://supabase.com/docs/guides/auth/passwords).
+Each user sees only their own purchases. A phone token can add captures but never read anything.
 
 ## Repository layout
 
 ```text
 apps/
-  web/                        Local Next.js dashboard
-    src/app/                  Layout, starter page, and CSS
-  api/                        Headless Next.js backend
-    src/app/route.ts          JSON service-status endpoint
-    src/pages/api/graphql.ts  Apollo Server endpoint
-    server/schemas.graphql    GraphQL schema with one auth directive per operation
-    server/resolvers.ts       Resolver registry
-    server/services/          Queries and mutations, calling Supabase through supabase-js
-    server/context.ts         Per-request Supabase client and decoded credential
-    prisma/                   Prisma schema and migrations (migration tool only)
-    docs/setup.md             Backend setup and GraphQL examples
-docs/plans/                   Saved implementation plan
-package.json                  Workspace commands
-package-lock.json             Shared dependency lockfile
+  web/                         Next.js dashboard
+    src/app/api/purchases/     Forwards the signed-in browser's requests to the API
+  api/                         Next.js API (no pages of its own)
+    src/pages/api/graphql.ts   Apollo Server endpoint
+    src/pages/api/graphql/capture.ts   Free-form capture endpoint for the Shortcut
+    server/schemas.graphql     GraphQL schema; one auth directive per operation
+    server/resolvers.ts        Resolver registry
+    server/services/           Queries and mutations, calling Supabase through supabase-js
+    server/context.ts          Per-request Supabase client and decoded credential
+    server/directives.ts       @public, @authenticated, @shortcut; undecorated operations are blocked
+    server/integrations/       Third-party clients (Upstash rate limiting)
+    prisma/                    Schema and migrations (Prisma is the migration tool only)
+    docs/setup.md              API contract and request examples
 ```
 
-## What the app will do
+## Local development
 
-- Capture purchases through a personal Wallet transaction automation on your iPhone.
-- Save each capture on the phone before uploading it, so failed requests can be retried later.
-- Send transaction data as JSON to an authenticated GraphQL backend hosted on Vercel.
-- Store purchases in Supabase Postgres, with Prisma managing the application schema and migrations.
-- Let you sign in to a local mobile dashboard to review purchases and CAD spending totals by month.
-- Let you correct captured purchases, add missing purchases manually, and exclude erroneous records from totals.
-- Keep captures with missing amounts or currencies visible for correction, while excluding them from totals until complete.
+Use Node.js 24 (`nvm use`) and install once from the repository root with `npm ci`.
 
-Version one is for one owner and their in-person iPhone Apple Pay taps.
-
-## How capture and retry will work
-
-1. You tap a selected card in Apple Wallet, triggering a personal Shortcuts automation configured on your phone.
-2. The Shortcut assigns an event ID and saves the capture as a JSON file in a dedicated folder under **On My iPhone**. It records the transaction details that Wallet makes available, such as merchant and amount, plus the capture time and configured source ID.
-3. The Shortcut sends a GraphQL mutation to the hosted API using its upload-only secret.
-4. The backend checks the credential and source ID, saves the capture through Prisma, and acknowledges the event ID. Replaying the same event must return an acknowledgement without creating another purchase or overwriting a correction.
-5. The Shortcut deletes its saved file only after receiving a successful acknowledgement for that event. Network failures, authorization failures, or GraphQL errors leave the file available for a separate, manually run retry Shortcut.
-
-The retry Shortcut will resend the original saved event IDs and payloads. This prevents duplicate records caused by retrying an upload; identifying separate captures of the same real-world purchase still requires review.
-
-## Spending review
-
-The review app will run on your computer and be accessible from your iPhone over home Wi-Fi. It will provide:
-
-- Supabase email/password sign-in; each user sees only their own purchases.
-- A month selector, purchase list, CAD spending total, and counts of records needing review.
-- Purchase details including merchant, amount, currency, purchase time, and whether the entry came from Apple Pay or manual input.
-- Add and edit forms for missing or incorrect purchases.
-- Exclusion and restoration of erroneous records without deleting the original capture.
-
-CAD is the default for manual entries. Reporting periods use **America/Toronto**. Automatic captures with missing currency remain unknown until corrected. Other-currency captures will remain visible for review and stay outside CAD totals; version one will not perform currency conversion.
-
-## Architecture and access
-
-| Component | Planned responsibility |
+| Command | Purpose |
 | --- | --- |
-| iPhone Shortcuts | Wallet automation, local pending files, authenticated upload, and manual retry |
-| Vercel backend | Headless Next.js app with an Apollo Server GraphQL endpoint; authentication, validation, and capture acknowledgement |
-| Prisma | Database migrations only; the API reads and writes through supabase-js |
-| Supabase Postgres | Persistent purchase storage with exact decimal amounts |
-| Supabase Auth | Owner sign-in for reviewing and editing purchases |
-| Local review app | Next.js mobile dashboard served from your computer; calls the owner-authenticated GraphQL API |
+| `npm run dev` | Dashboard on http://127.0.0.1:3000 |
+| `npm run dev:api` | API on http://127.0.0.1:3001 |
+| `npm run dev:lan` | Dashboard reachable from other devices on your network |
+| `npm run lint` / `npm run typecheck` / `npm run build` | Static checks for both apps |
+| `npm run prisma:validate` | Validate the Prisma schema |
+| `npm run db:migrate` | Apply checked-in migrations using `DIRECT_URL` |
 
-The hosted backend will be reachable away from home. Only `apps/api` is intended for the Vercel backend project; `apps/web` remains local so its review pages are separate from the hosted API's source and build.
+There are no automated tests.
 
-The phone's credential can submit captures and receive acknowledgements; it cannot read or edit spending records. Its source ID labels the configured installation. Authentication verifies possession of the secret, rather than proving which physical phone sent a request.
+## Configuration
 
-Database credentials stay on the server. The dashboard and shared examples must not contain database passwords or the phone's upload secret. The web starter uses Next.js server components with ordinary CSS. Prisma stores immutable original captures separately from editable review fields; the API requires an owner token for all spending queries and corrections. POST requests accept JSON bodies up to 32 KiB and do not return internal database or authentication details.
+Copy each app's `.env.example` to `.env.local`. Real env files are ignored by Git; on Vercel the same names are set per project.
 
-## Capture scope and verification
+**`apps/api`**
 
-[Apple documents a Wallet card-tap trigger](https://support.apple.com/en-euro/guide/shortcuts/apd65c67538a/ios) and [JSON API requests from Shortcuts](https://support.apple.com/guide/shortcuts/request-your-first-api-apd58d46713f/ios). Available transaction fields, operation while the phone is locked, and local file permissions still need verification on the actual iPhone and card.
+| Setting | Purpose |
+| --- | --- |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | The API's only database access. It bypasses RLS, so every service filters by the signed-in user. Server only. |
+| `DIRECT_URL` | `postgresql://` session-pooler URL (port 5432), used only by `npm run db:migrate` |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Rate limiting. If unset, rate limiting is off. |
 
-The tracker records what the automation reports. It cannot promise that every payment is captured or that a captured amount matches the final bank charge. Missing captures, cancelled payments, and later amount adjustments can be corrected manually.
+**`apps/web`**
 
-Apple Watch purchases, online Apple Pay, other bank transactions, categories, budgets, charts, and bank reconciliation are outside version one.
+| Setting | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser sign-in. Never a secret key. |
+| `GRAPHQL_API_URL` | The API's `/api/graphql` address |
+| `DEV_ORIGIN_HOST` | Optional hostname allowed to reach the dev server from another device |
 
-## Implementation plan
+## Database
 
-See [the local implementation plan](docs/plans/2026-10-13-apple-pay-tracker.md) for the agreed design, delivery steps, and acceptance checks. Next: review the migration, configure the private API environment, then build the local dashboard's sign-in and spending screens.
+Supabase Postgres, `public` schema, snake_case names.
 
-Static review, Prisma schema validation, ESLint, TypeScript checks, and both production builds passed. The repository has no unit or integration test suites at this stage, as requested. Database connectivity, live authentication, and phone capture behavior remain unverified; static compilation does not establish that they work.
+| Table | Purpose |
+| --- | --- |
+| `users` | One row per Supabase Auth user, same UUID, kept in sync by a trigger on `auth.users` |
+| `transaction` | Purchases. Capture metadata is immutable; merchant, amount, currency, time and `excluded` are editable. |
+| `shortcut_token` | SHA-256 of each phone token; one active token per user |
 
-Dependency audit reports nine high advisories through the Prisma CLI and Next.js ESLint toolchain, with no fix inside the selected dependency ranges. The six API build-trace manifests reference none of the affected `mysql2`, `deepmerge-ts`, or `braces` packages, nor the Prisma CLI/config packages or web app source. This does not make the installed development toolchain vulnerability-free; no forced downgrade or override was applied.
+RLS is on for every table. Through Supabase's Data API a signed-in user can only read their own `users` row and `transaction` rows; `shortcut_token` and Prisma's migration table are not reachable at all. The API uses the service-role key and applies the per-user filter itself.
+
+Change the schema only through a new migration in `apps/api/prisma/migrations/`, then run `npm run db:migrate`. Migrations are never part of a build or deploy. Some SQL (constraints, triggers, RLS policies, the `spending_summary` function, the link to `auth.users`) exists only in the migration files, so use `prisma migrate deploy`, not `migrate dev`.
+
+## Phone setup
+
+1. Sign in to the dashboard and press **Create phone token**. Copy the `ap_…` value; it is shown once, and creating another revokes it.
+2. In Shortcuts → Automation, add a **Wallet** (Transaction) automation for your cards, set to **Run Immediately**, that runs a new shortcut.
+3. In that shortcut add **Get Contents of URL**:
+   - URL: `https://apple-pay-api.vercel.app/api/graphql/capture`
+   - Method: `POST`
+   - Header: `Authorization` = `Bearer ap_…`
+   - Request Body: **File** = **Shortcut Input**
+
+Captures need a network connection; there is no offline queue or duplicate protection on this path.
+
+## Deployment
+
+Two Vercel projects, `apple-pay-api` (root directory `apps/api`) and `apple-pay-web` (root directory `apps/web`), both on Node 24.
+
+## Known limits
+
+- Amounts are parsed from Wallet's display text; anything unreadable is saved as "amount unknown" for manual correction. A bare `$` is read as CAD.
+- Totals are CAD only, with no currency conversion. Months use America/Toronto.
+- Editing a purchase does not lock the row, so two simultaneous edits can produce a validation error.
+- Rate limiting fails open: if Upstash is unreachable, requests are allowed.
