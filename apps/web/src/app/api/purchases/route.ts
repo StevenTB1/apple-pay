@@ -1,11 +1,12 @@
-const fields = "id source merchant cardLabel amount currency occurredAt excluded";
+const fields = "id source merchant cardLabel: card_label amount currency occurredAt: occurred_at excluded";
 const operations = {
-  list: `query Month($month: String!, $after: ID) {
-    transactions(month: $month, limit: 50, after: $after) { ${fields} }
-    spendingSummary(month: $month) { totalCad includedCount needsReviewCount excludedCount }
+  list: `query Month($month: String!, $offset: Int) {
+    transactions: getTransactions(month: $month, limit: 50, offset: $offset) { count data { ${fields} } }
+    spendingSummary: getSpendingSummary(month: $month) { totalCad: total_cad includedCount: included_count needsReviewCount: needs_review_count excludedCount: excluded_count }
   }`,
-  create: `mutation Add($input: ManualInput!) { createManualTransaction(input: $input) { ${fields} } }`,
-  update: `mutation Correct($id: ID!, $input: CorrectionInput!) { updateTransaction(id: $id, input: $input) { ${fields} } }`,
+  create: `mutation Add($input: ManualTransactionInput!) { createManualTransaction(input: $input) { ${fields} } }`,
+  createToken: `mutation { createShortcutToken { token } }`,
+  update: `mutation Correct($id: ID!, $input: TransactionCorrectionInput!) { updateTransaction(transaction_id: $id, input: $input) { ${fields} } }`,
 };
 
 function errorResponse(message: string, status: number) {

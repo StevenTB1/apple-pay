@@ -63,7 +63,7 @@ function SignIn({ client }: { client: SupabaseClient }) {
   return (
     <section className="panel sign-in" aria-labelledby="sign-in-heading">
       <p className="eyebrow">Welcome back</p><h2 id="sign-in-heading">Your purchases, in one place.</h2>
-      <p className="muted">Sign in with your tracker’s owner account.</p>
+      <p className="muted">Sign in with your email and password.</p>
       <form onSubmit={submit}>
         <label>Email<input name="email" type="email" autoComplete="username" required disabled={busy} /></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required disabled={busy} /></label>
@@ -98,7 +98,32 @@ function OwnerDashboard({ session, client, initialMonth }: { session: Session; c
         <button className="secondary" onClick={() => setRevision((value) => value + 1)}>Refresh</button>
       </div>
       <MonthPurchases key={`${month}:${revision}`} month={month} token={session.access_token} refresh={() => setRevision((value) => value + 1)} />
+      <PhoneToken token={session.access_token} />
     </>
+  );
+}
+
+function PhoneToken({ token }: { token: string }) {
+  const [secret, setSecret] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function create() {
+    if (busy || !window.confirm("Create a new phone token? Any token already on a phone stops working.")) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await purchaseRequest<{ createShortcutToken: { token: string } }>(token, "createToken", {});
+      setSecret(result.createShortcutToken.token);
+    } catch (error) { setError(error instanceof Error ? error.message : "Couldn't create a phone token."); }
+    finally { setBusy(false); }
+  }
+  return (
+    <section className="panel" aria-labelledby="phone-token-heading">
+      <h2 id="phone-token-heading">iPhone Shortcut</h2>
+      <p className="muted">The Shortcut uploads purchases with a secret token. It can add captures but never read your spending.</p>
+      {secret ? <label>Copy this into the Shortcut now — it is shown only once<input readOnly value={secret} onFocus={(event) => event.target.select()} /></label> : null}
+      {error ? <p className="error" role="alert">{error}</p> : null}
+      <button className="secondary" onClick={create} disabled={busy}>{busy ? "Creating…" : "Create phone token"}</button>
+    </section>
   );
 }
 
@@ -113,7 +138,7 @@ function MonthPurchases({ month, token, refresh }: { month: string; token: strin
     const controller = new AbortController();
     purchaseRequest<MonthData>(token, "list", { month }, controller.signal)
       .then((result) => {
-        if (!controller.signal.aborted) { setData(result); setError(null); setHasMore(result.transactions.length === 50); }
+        if (!controller.signal.aborted) { setData(result); setError(null); setHasMore(result.transactions.data.length < result.transactions.count); }
       })
       .catch((error: Error) => { if (!controller.signal.aborted) setError(error.message); });
     return () => controller.abort();
@@ -123,9 +148,10 @@ function MonthPurchases({ month, token, refresh }: { month: string; token: strin
     if (!data || moreBusy) return;
     setMoreBusy(true); setError(null);
     try {
-      const result = await purchaseRequest<MonthData>(token, "list", { month, after: data.transactions.at(-1)?.id });
-      setData((current) => current ? { ...result, transactions: [...current.transactions, ...result.transactions] } : current);
-      setHasMore(result.transactions.length === 50);
+      const result = await purchaseRequest<MonthData>(token, "list", { month, offset: data.transactions.data.length });
+      const rows = [...data.transactions.data, ...result.transactions.data];
+      setData({ ...result, transactions: { count: result.transactions.count, data: rows } });
+      setHasMore(rows.length < result.transactions.count);
     } catch (error) { setError(error instanceof Error ? error.message : "Couldn't load more purchases."); }
     finally { setMoreBusy(false); }
   }
@@ -151,8 +177,8 @@ function MonthPurchases({ month, token, refresh }: { month: string; token: strin
         {error ? <div className="error" role="alert"><p>{error}</p><button className="secondary" onClick={refresh}>Refresh purchases</button></div> : null}
         {editing ? <PurchaseForm key={editing === "new" ? "new" : editing.id} purchase={editing === "new" ? null : editing} token={token} onSaved={refresh} onCancel={() => setEditing(null)} /> : null}
         {!data && !error ? <p className="loading" role="status">Loading purchases…</p> : null}
-        {data?.transactions.length === 0 ? <div className="empty-state"><h3>No purchases this month</h3><p>Add a purchase manually or capture one with your iPhone Shortcut.</p></div> : null}
-        {data ? <ul className="purchase-list">{data.transactions.map((row) => {
+        {data?.transactions.data.length === 0 ? <div className="empty-state"><h3>No purchases this month</h3><p>Add a purchase manually or capture one with your iPhone Shortcut.</p></div> : null}
+        {data ? <ul className="purchase-list">{data.transactions.data.map((row) => {
           const incomplete = row.amount === null || row.currency === null;
           return (
             <li key={row.id} className={row.excluded ? "purchase excluded" : "purchase"}>

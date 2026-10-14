@@ -1,14 +1,21 @@
--- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "tracker";
-
 -- CreateEnum
-CREATE TYPE "tracker"."CaptureSource" AS ENUM ('APPLE_PAY', 'MANUAL');
+CREATE TYPE "CaptureSource" AS ENUM ('APPLE_PAY', 'MANUAL');
 
 -- CreateTable
-CREATE TABLE "tracker"."Transaction" (
+CREATE TABLE "User" (
+    "id" UUID NOT NULL,
+    "email" VARCHAR(320),
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Transaction" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "ownerId" UUID NOT NULL,
-    "source" "tracker"."CaptureSource" NOT NULL,
+    "source" "CaptureSource" NOT NULL,
     "sourceId" VARCHAR(100),
     "eventId" VARCHAR(128),
     "captureFingerprint" CHAR(64),
@@ -27,13 +34,19 @@ CREATE TABLE "tracker"."Transaction" (
 );
 
 -- CreateIndex
-CREATE INDEX "Transaction_ownerId_occurredAt_id_idx" ON "tracker"."Transaction"("ownerId", "occurredAt", "id");
+CREATE INDEX "Transaction_ownerId_occurredAt_id_idx" ON "Transaction"("ownerId", "occurredAt", "id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Transaction_ownerId_sourceId_eventId_key" ON "tracker"."Transaction"("ownerId", "sourceId", "eventId");
+CREATE UNIQUE INDEX "Transaction_ownerId_sourceId_eventId_key" ON "Transaction"("ownerId", "sourceId", "eventId");
+
+-- AddForeignKey
+ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Prisma cannot reference auth.users; deleting an Auth user removes their profile and purchases.
+ALTER TABLE "User" ADD CONSTRAINT "User_id_auth_fkey" FOREIGN KEY ("id") REFERENCES auth.users("id") ON DELETE CASCADE;
 
 -- Prisma cannot express these cross-field constraints; keep them in this migration.
-ALTER TABLE "tracker"."Transaction"
+ALTER TABLE "Transaction"
   ADD CONSTRAINT "Transaction_nonnegative_amount" CHECK ("amount" IS NULL OR "amount" >= 0),
   ADD CONSTRAINT "Transaction_currency_code" CHECK ("currency" IS NULL OR "currency" ~ '^[A-Z]{3}$'),
   ADD CONSTRAINT "Transaction_cad_precision" CHECK (
@@ -52,8 +65,8 @@ ALTER TABLE "tracker"."Transaction"
   );
 
 -- Original capture and owner identity remain unchanged when review fields are corrected.
-CREATE FUNCTION "tracker"."protect_capture_metadata"() RETURNS trigger
-LANGUAGE plpgsql AS $$
+CREATE FUNCTION public.protect_capture_metadata() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
   IF ROW(NEW."id", NEW."ownerId", NEW."source", NEW."sourceId", NEW."eventId",
          NEW."captureFingerprint", NEW."originalCapture", NEW."capturedAt", NEW."receivedAt", NEW."cardLabel")
@@ -67,11 +80,35 @@ END;
 $$;
 
 CREATE TRIGGER "Transaction_protect_capture_metadata"
-BEFORE UPDATE ON "tracker"."Transaction"
-FOR EACH ROW EXECUTE FUNCTION "tracker"."protect_capture_metadata"();
+BEFORE UPDATE ON "Transaction"
+FOR EACH ROW EXECUTE FUNCTION public.protect_capture_metadata();
 
--- Server Prisma uses the migration/table owner. Client roles receive no row policies.
--- Keep tracker outside Supabase's exposed Data API schemas.
-REVOKE ALL ON SCHEMA "tracker" FROM PUBLIC;
-REVOKE ALL ON TABLE "tracker"."Transaction" FROM PUBLIC;
-ALTER TABLE "tracker"."Transaction" ENABLE ROW LEVEL SECURITY;
+-- Mirror each Auth user into public."User" with the same UUID.
+CREATE FUNCTION public.sync_auth_user() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  INSERT INTO public."User" ("id", "email") VALUES (NEW.id, NEW.email)
+  ON CONFLICT ("id") DO UPDATE SET "email" = EXCLUDED."email", "updatedAt" = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "on_auth_user_created"
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.sync_auth_user();
+
+CREATE TRIGGER "on_auth_user_email_updated"
+AFTER UPDATE OF email ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.sync_auth_user();
+
+INSERT INTO "User" ("id", "email") SELECT id, email FROM auth.users ON CONFLICT ("id") DO NOTHING;
+
+-- Prisma connects as the table owner and bypasses RLS; Data API users see only their own rows.
+ALTER TABLE "User" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Transaction" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users read their own profile" ON "User"
+FOR SELECT TO authenticated USING ("id" = (SELECT auth.uid()));
+
+CREATE POLICY "Users read their own transactions" ON "Transaction"
+FOR SELECT TO authenticated USING ("ownerId" = (SELECT auth.uid()));

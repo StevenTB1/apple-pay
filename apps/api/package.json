@@ -3,36 +3,34 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "prisma generate && next dev --hostname 127.0.0.1 --port 3001",
-    "build": "prisma generate && next build",
+    "dev": "next dev --hostname 127.0.0.1 --port 3001",
+    "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3001",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "prisma generate && next typegen && tsc --noEmit",
-    "prisma:generate": "prisma generate",
+    "typecheck": "next typegen && tsc --noEmit",
     "prisma:validate": "prisma validate",
-    "db:migrate": "prisma migrate deploy",
-    "shortcut:token": "tsx src/scripts/create-shortcut-token.ts"
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
-    "graphql": "^16.11.0",
-    "graphql-yoga": "5.24.5",
-    "next": "16.4.0",
-    "@prisma/client": "7.10.0",
-    "@prisma/adapter-pg": "7.10.0",
-    "pg": "8.23.1",
-    "@next/env": "16.4.0",
-    "server-only": "0.0.1",
+    "@apollo/server": "5.5.1",
+    "@as-integrations/next": "4.1.0",
+    "@graphql-tools/schema": "10.1.4",
+    "@graphql-tools/utils": "12.0.4",
     "@js-temporal/polyfill": "0.5.1",
-    "@supabase/supabase-js": "2.117.3"
+    "@next/env": "16.4.0",
+    "@supabase/supabase-js": "2.117.3",
+    "@upstash/ratelimit": "2.2.0",
+    "@upstash/redis": "1.39.0",
+    "graphql": "^16.11.0",
+    "graphql-tag": "2.12.7",
+    "next": "16.4.0"
   },
   "devDependencies": {
     "@types/node": "^24",
     "@types/react": "^19",
     "eslint": "^10",
     "eslint-config-next": "16.4.0",
-    "typescript": "^5",
     "prisma": "7.10.0",
-    "@types/pg": "8.23.1",
-    "tsx": "4.23.15"
+    "typescript": "^5"
   }
 }

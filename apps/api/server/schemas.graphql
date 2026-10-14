@@ -1,0 +1,102 @@
+scalar JSON
+
+# IMPORTANT DO NOT DELETE
+# Every query/mutation MUST have exactly one auth directive.
+# Undecorated fields default to @forbidden — they will be blocked at runtime.
+directive @public on FIELD_DEFINITION
+directive @authenticated on FIELD_DEFINITION
+directive @shortcut on FIELD_DEFINITION
+directive @forbidden on FIELD_DEFINITION
+# IMPORTANT DO NOT DELETE
+
+# ------------------------------------------------------------------------------
+#                                Queries
+# ------------------------------------------------------------------------------
+
+type Query {
+  status: String! @public
+
+  # Transactions
+  getTransactions(month: String!, limit: Int = 50, offset: Int = 0): Transactions @authenticated
+  getSpendingSummary(month: String!): SpendingSummary @authenticated
+}
+
+# ------------------------------------------------------------------------------
+#                                Mutations
+# ------------------------------------------------------------------------------
+
+type Mutation {
+  # Transactions
+  createManualTransaction(input: ManualTransactionInput!): Transaction @authenticated
+  updateTransaction(transaction_id: ID!, input: TransactionCorrectionInput!): Transaction @authenticated
+
+  # Shortcut
+  createShortcutToken: ShortcutCredential @authenticated
+  # input is free-form: raw transaction text, or an object with any of
+  # merchant, amount, card, currency, event_id, captured_at. Nothing sent is discarded.
+  recordCapture(input: JSON): CaptureAck @shortcut
+}
+
+# ------------------------------------------------------------------------------
+#                                Transactions
+# ------------------------------------------------------------------------------
+
+enum CaptureSource {
+  APPLE_PAY
+  MANUAL
+}
+
+type Transactions {
+  count: Int
+  data: [Transaction]
+}
+
+type Transaction {
+  id: ID!
+  source: CaptureSource!
+  merchant: String
+  card_label: String
+  amount: String
+  currency: String
+  occurred_at: String!
+  captured_at: String
+  received_at: String!
+  updated_at: String!
+  excluded: Boolean!
+}
+
+type SpendingSummary {
+  total_cad: String!
+  included_count: Int!
+  needs_review_count: Int!
+  excluded_count: Int!
+}
+
+input ManualTransactionInput {
+  merchant: String
+  amount: String!
+  currency: String
+  occurred_at: String!
+}
+
+input TransactionCorrectionInput {
+  merchant: String
+  amount: String
+  currency: String
+  occurred_at: String
+  excluded: Boolean
+}
+
+# ------------------------------------------------------------------------------
+#                                Shortcut
+# ------------------------------------------------------------------------------
+
+type ShortcutCredential {
+  token: String!
+}
+
+type CaptureAck {
+  transaction_id: ID!
+  event_id: String!
+  duplicate: Boolean!
+}

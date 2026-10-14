@@ -6,26 +6,38 @@ The backend lives in `apps/api`, separate from the local review app. Its initial
 
 Copy `apps/api/.env.example` to `apps/api/.env.local`. Use `.env.local` for local secrets and Vercel environment settings for the future hosted API. Both real env files and generated credential files are ignored by Git. No Infisical integration is needed for this milestone.
 
-- `DATABASE_URL`: runtime PostgreSQL connection, using the transaction pooler on port 6543 for the hosted API.
-- `DIRECT_URL`: direct PostgreSQL or session-pooler connection on port 5432 for Prisma migrations. The session pooler is useful when direct IPv6 connectivity is unavailable.
-- `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`: verify owner access tokens with Supabase Auth. Use the publishable key, without a service-role secret.
-- `OWNER_USER_ID`: the exact UUID of the allowed email/password Supabase Auth account.
-- `SHORTCUT_SOURCE_ID`: stable identifier for the configured phone installation.
-- `SHORTCUT_TOKEN_SHA256`: hex SHA-256 digest of its upload secret.
+- `DIRECT_URL`: session-pooler PostgreSQL connection on port 5432, used only by `npm run db:migrate`. The running API does not use a PostgreSQL connection string.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: the API talks to the database only through supabase-js with the service-role key, and verifies sign-in tokens with `auth.getUser`. The key bypasses RLS, so every service filters by the signed-in user.
 
-Use the project's Connect dialog and preserve its TLS settings. Runtime Prisma uses the `tracker` schema and a small connection pool. The database role must own the migration's tables or bypass RLS. Keep `tracker` outside the exposed Data API schemas. [Supabase's Prisma guide](https://supabase.com/docs/guides/database/prisma) describes the connection choices.
+The API follows the same layout as the lindyventures API: `server/schemas.graphql` is the single source of truth with one auth directive per operation (`@public`, `@authenticated`, `@shortcut`; anything undecorated is forbidden), `server/resolvers.ts` registers `*_QUERIES` / `*_MUTATIONS` exported by `server/services/*`, `server/context.ts` builds `{ supabase, token }` per request, and `src/pages/api/graphql.ts` serves it with Apollo Server. Operations are camelCase verbs (`getTransactions`, `recordCapture`); fields and arguments are snake_case and match the database columns. Prisma is kept only as the migration tool.
 
-During local development, both database variables can use the same direct `postgres://` or `postgresql://` connection string. The HTTPS project address belongs in `SUPABASE_URL`. Configure TLS in the database connection string, for example with `sslmode=require` for Supabase; use `&sslmode=require` when a query string already exists. Before serverless deployment, change only `DATABASE_URL` to the transaction-pooler connection and keep `DIRECT_URL` for migrations.
 
-`npm run shortcut:token` generates a random upload secret and source ID in `apps/api/.shortcut-credentials.json`, with private file permissions. It prints the file location, without printing its contents. It refuses to replace an existing file. Configure the file's `sourceId` and `tokenHash` in the backend and put `token` in the phone Shortcut. The source ID is a label, not phone attestation. To rotate a credential, keep the source ID for pending captures, replace the hash and the phone's secret together, and keep old files private until no longer needed.
+Phone credentials live in the `shortcut_token` table, one active token per user. A signed-in user creates one with the dashboard's **Create phone token** button (`createShortcutToken` mutation); the raw `ap_…` secret is shown once and only its SHA-256 is stored. Creating a new token revokes the previous one. The token decides which user owns each capture.
 
-No credentials are required for Prisma generation, schema validation, production compilation, or unauthenticated service status. Protected operations require configured credentials and a migrated database.
+Schema validation and production compilation need no credentials. Every request, including `status`, needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Migration review
 
-Review `apps/api/prisma/schema.prisma` and `apps/api/prisma/migrations/20261013000000_initial_tracker/migration.sql`. The SQL includes constraints and a trigger Prisma's schema cannot express; retain those in future migrations. It creates a custom `tracker` schema, enables RLS without client policies, and prevents updates to original capture identity and input. Editable fields are merchant, amount, currency, purchase time, and exclusion state.
+Review `apps/api/prisma/schema.prisma` and `apps/api/prisma/migrations/20261013000000_initial_tracker/migration.sql`. The SQL includes constraints and a trigger Prisma's schema cannot express; retain those in future migrations. It creates `users` (mirrored from `auth.users` by trigger, same UUID) and `transaction` in `public`, enables RLS so Data API users can only read their own rows, and prevents updates to original capture identity and input. Editable fields are merchant, amount, currency, purchase time, and exclusion state.
 
-The migration has not been applied. After review and environment configuration, `npm run db:migrate` uses `DIRECT_URL` to apply checked-in migrations. Do not substitute reset, schema push, or automatic startup migrations. Dev/build/typecheck only generate the client.
+Migrations are applied to the Supabase project. `npm run db:migrate` uses `DIRECT_URL` to apply new checked-in migrations. Do not substitute reset, schema push, or automatic startup migrations. Dev/build/typecheck only generate the client.
+
+## Phone access over Tailscale
+
+The API and dashboard stay bound to `127.0.0.1`. Tailscale gives the iPhone a private, encrypted HTTPS route to this Mac, from home Wi-Fi or cellular, without publishing a public endpoint.
+
+1. Install Tailscale on the Mac and the iPhone and sign in to the same tailnet. In the admin console, enable **MagicDNS** and **HTTPS certificates** (DNS page).
+2. Find the Mac's name: `tailscale status` lists it as `<mac>.<tailnet>.ts.net`.
+3. Expose both apps to the tailnet only (not Funnel):
+   ```bash
+   tailscale serve --bg 3000
+   tailscale serve --bg --https=8443 3001
+   ```
+   The dashboard is then `https://<mac>.<tailnet>.ts.net` and the capture API is `https://<mac>.<tailnet>.ts.net:8443/api/graphql`.
+4. Set `DEV_ORIGIN_HOST=<mac>.<tailnet>.ts.net` in `apps/web/.env.local`, then run `npm run dev:api` and `npm run dev` from the repository root.
+5. On the iPhone, with Tailscale connected, open the dashboard URL and sign in.
+
+`tailscale serve status` shows the mappings; `tailscale serve reset` removes them. Uploads only work while the Mac is awake with both apps running; otherwise captures stay pending on the phone for the retry Shortcut.
 
 ## Authentication and access
 
@@ -34,36 +46,35 @@ All operations use `/api/graphql`. POST requests must contain `Content-Type: app
 | Credential | Header | Permitted operations |
 | --- | --- | --- |
 | None | No Authorization header | `status` only |
-| Phone secret | `Authorization: Bearer <phone-token>` | `recordCapture` and public status |
+| Phone secret | `Authorization: Bearer <phone-token>` | `record_capture` and public status |
 | Owner access token | `Authorization: Bearer <supabase-access-token>` | Owner queries, manual entries, corrections, and public status |
 
-Owner tokens are verified using `supabase.auth.getUser(token)` and restricted to `OWNER_USER_ID`. Tokens for unrelated Supabase users fail. The client never supplies an owner ID. The phone credential cannot list or edit purchases; the owner token cannot call capture ingestion. Schema introspection reveals the API shape, without access to personal records.
+Owner tokens are verified using `supabase.auth.getUser(token)` ; each signed-in user reads and edits only their own purchases. The client never supplies an owner ID. The phone credential cannot list or edit purchases; the owner token cannot call capture ingestion. Schema introspection reveals the API shape, without access to personal records.
 
 Expected errors have codes `BAD_USER_INPUT`, `UNAUTHENTICATED`, `FORBIDDEN`, `CONFLICT`, or `NOT_FOUND`. Unexpected failures return a generic `INTERNAL_SERVER_ERROR`, including in development. Any GraphQL `errors` array means an upload failed, even when HTTP status is 200.
 
 ## Capture JSON
 
-Send this JSON body using the phone secret header. Replace the source ID with the configured value and generate the event ID once, before saving the pending file.
+Send this JSON body using the phone secret header. Generate the event ID once, before saving the pending file. `source_id` is optional and defaults to the token's own ID.
 
 ```json
 {
-  "query": "mutation Capture($input: CaptureInput!) { recordCapture(input: $input) { transactionId eventId duplicate } }",
+  "query": "mutation Capture($input: CaptureInput!) { recordCapture(input: $input) { transaction_id event_id duplicate } }",
   "variables": {
     "input": {
-      "sourceId": "replace-with-configured-source-id",
-      "eventId": "replace-with-one-stable-event-uuid",
-      "capturedAt": "2026-10-13T16:30:00-04:00",
+      "event_id": "replace-with-one-stable-event-uuid",
+      "captured_at": "2026-10-13T16:30:00-04:00",
       "merchant": "Coffee shop",
-      "cardLabel": "Personal card",
+      "card_label": "Personal card",
       "amount": "12.30",
       "currency": "CAD",
-      "rawAmount": "$12.30"
+      "raw_amount": "$12.30"
     }
   }
 }
 ```
 
-Amounts are nonnegative decimal **strings**, without a currency symbol, exponent, or thousands separator. CAD permits two effective decimal places; other or unknown currencies permit four. Strings may have up to sixteen integer digits. Unknown amount or currency must be omitted or `null`; automatic captures never default to CAD. Preserve ambiguous original amount text in `rawAmount`. Do not treat a missing amount as zero.
+Amounts are nonnegative decimal **strings**, without a currency symbol, exponent, or thousands separator. CAD permits two effective decimal places; other or unknown currencies permit four. Strings may have up to sixteen integer digits. Unknown amount or currency must be omitted or `null`; automatic captures never default to CAD. Preserve ambiguous original amount text in `raw_amount`. Do not treat a missing amount as zero.
 
 Timestamps must have an explicit timezone, valid calendar date, and at most millisecond precision. The API stores canonical UTC instants. Merchant, card label, and original amount text have bounded lengths. Source IDs use 3–100 ASCII letters/digits/underscores/hyphens; event IDs use 16–128. UUIDs meet both rules. Unsupported fields fail validation.
 
@@ -73,8 +84,8 @@ A successful result looks like:
 {
   "data": {
     "recordCapture": {
-      "transactionId": "saved-purchase-uuid",
-      "eventId": "the-event-id-from-your-pending-file",
+      "transaction_id": "saved-purchase-uuid",
+      "event_id": "the-event-id-from-your-pending-file",
       "duplicate": false
     }
   }
@@ -89,31 +100,31 @@ Full phone automation assembly and locked-phone/offline behavior remain the late
 
 ## Owner queries and corrections
 
-Use the owner's Supabase access token for these operations. Amounts are returned as exact decimal strings; `totalCad` has two decimal places.
+Use the owner's Supabase access token for these operations. Amounts are returned as exact decimal strings; `total_cad` has two decimal places.
 
 ```graphql
 query Month($month: String!) {
-  transactions(month: $month, limit: 100) {
-    id source merchant cardLabel amount currency occurredAt excluded
-    capturedAt receivedAt updatedAt
-  }
-  spendingSummary(month: $month) {
-    totalCad includedCount needsReviewCount excludedCount
+  getTransactions(month: $month, limit: 100) { count data {
+    id source merchant card_label amount currency occurred_at excluded
+    captured_at received_at updated_at
+  } }
+  getSpendingSummary(month: $month) {
+    total_cad included_count needs_review_count excluded_count
   }
 }
 ```
 
-`month` uses `YYYY-MM`, with America/Toronto boundaries including daylight saving time. Lists default to 50 records, are limited to 100 per call, and sort newest purchase time first. Totals/counts cover the entire selected month. Complete, included CAD records contribute to `totalCad`; unknown amounts/currencies and foreign-currency records contribute to `needsReviewCount`. Excluded records contribute only to `excludedCount`. There is no FX conversion.
+`month` uses `YYYY-MM`, with America/Toronto boundaries including daylight saving time. Lists default to 50 records, are limited to 100 per call, and sort newest purchase time first. Totals/counts cover the entire selected month. Complete, included CAD records contribute to `total_cad`; unknown amounts/currencies and foreign-currency records contribute to `needs_review_count`. Excluded records contribute only to `excluded_count`. There is no FX conversion.
 
 ```graphql
-mutation Add($input: ManualInput!) {
+mutation Add($input: ManualTransactionInput!) {
   createManualTransaction(input: $input) { id source amount currency }
 }
-# variables: {"input":{"merchant":"Cash lunch","amount":"8.25","occurredAt":"2026-10-13T12:00:00-04:00"}}
+# variables: {"input":{"merchant":"Cash lunch","amount":"8.25","occurred_at":"2026-10-13T12:00:00-04:00"}}
 
-mutation Correct($id: ID!, $input: CorrectionInput!) {
-  updateTransaction(id: $id, input: $input) {
-    id merchant amount currency occurredAt excluded
+mutation Correct($id: ID!, $input: TransactionCorrectionInput!) {
+  updateTransaction(transaction_id: $id, input: $input) {
+    id merchant amount currency occurred_at excluded
   }
 }
 # variables: {"id":"saved-purchase-uuid","input":{"amount":"9.95","currency":"CAD"}}

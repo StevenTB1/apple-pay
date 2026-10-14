@@ -37,9 +37,7 @@ The API's [root endpoint](http://127.0.0.1:3001) returns service status. Its [Gr
 | `npm run build` | Compile production builds for both apps |
 | `npm start` | Serve the built dashboard locally |
 | `npm run start:api` | Serve the built API locally |
-| `npm run prisma:generate` | Generate the API's Prisma client without a database connection |
 | `npm run prisma:validate` | Validate the Prisma schema without changing a database |
-| `npm run shortcut:token` | Generate an ignored, private phone credential file |
 | `npm run db:migrate` | Apply checked-in migrations using `DIRECT_URL`; run only after migration review |
 
 For phone access, copy `apps/web/.env.example` to `apps/web/.env.local`, set `DEV_ORIGIN_HOST` to your computer's LAN hostname or IP without a protocol or port, and run `npm run dev:lan`. Open `http://<your-computer-LAN-IP>:3000` on your phone. Both devices must be on the same network. Owner sign-in is a later implementation step; this starter contains no personal records.
@@ -54,19 +52,16 @@ Copy `apps/api/.env.example` to `apps/api/.env.local` and configure these values
 
 | Setting | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Supabase PostgreSQL runtime connection; transaction pooler for the hosted API |
 | `DIRECT_URL` | Direct or session-pooler connection for reviewed migrations |
-| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | Validate the signed-in owner's access token; no service-role key needed |
-| `OWNER_USER_ID` | UUID of the single permitted Supabase Auth user |
-| `SHORTCUT_SOURCE_ID`, `SHORTCUT_TOKEN_SHA256` | Bind the upload-only credential to the phone's configured source |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | The API's only database access (supabase-js); also verifies sign-in tokens |
 
-Use the connection strings from the dedicated project's Connect dialog, with TLS configured there. The runtime database role must own the migrated tracker tables or bypass RLS; an ordinary client role has no access. Create the owner's Supabase email/password account and put its Auth user UUID in `OWNER_USER_ID`. The dashboard sign-in screen will be implemented next.
+Use the connection strings from the dedicated project's Connect dialog, with TLS configured there. The runtime database role must own the migrated tables so it bypasses RLS; Data API users can only read their own rows. Create your Supabase email/password account in the Auth dashboard, then sign in to the dashboard.
 
-For local development, `DATABASE_URL` and `DIRECT_URL` can use the same direct Postgres connection string. Both start with `postgres://` or `postgresql://`; the HTTPS project address goes in `SUPABASE_URL`.
+`DIRECT_URL` is a `postgresql://` session-pooler URL used only for migrations; the running API never opens a PostgreSQL connection.
 
-Run `npm run shortcut:token` when you are ready to configure the phone. It writes `apps/api/.shortcut-credentials.json` with private file permissions and refuses to replace an existing file. Put its `token` on the phone, `sourceId` in `SHORTCUT_SOURCE_ID`, and `tokenHash` in `SHORTCUT_TOKEN_SHA256`. Keep the file private and out of shared Shortcut exports. Replacing or removing the configured hash revokes the old credential. Pending captures retain their source ID, so keep that ID when rotating the secret if those files still need uploading.
+When you are ready to configure the phone, sign in to the dashboard and press **Create phone token**. Paste the `ap_…` secret into the Shortcut; it is shown once, and creating another revokes it.
 
-Review [the initial migration](apps/api/prisma/migrations/20261013000000_initial_tracker/migration.sql) before applying it. It creates only the application's `tracker` schema, exact decimal fields, capture constraints, an immutability trigger, and row-level security with no client policies. Keep this schema outside Supabase's exposed Data API schemas. **No migration has been applied by this implementation.** After review and private connection setup, `npm run db:migrate` applies the checked-in migrations; it is never part of startup or build.
+Review [the initial migration](apps/api/prisma/migrations/20261013000000_initial_tracker/migration.sql) before applying it. It creates `users` (synced from `auth.users`) and `transaction` in `public`, exact decimal fields, capture constraints, an immutability trigger, and owner-only read RLS policies. **No migration has been applied by this implementation.** After review and private connection setup, `npm run db:migrate` applies the checked-in migrations; it is never part of startup or build.
 
 See [API setup and request examples](apps/api/docs/setup.md) for the complete contract. Connection guidance comes from [Supabase's Prisma guide](https://supabase.com/docs/guides/database/prisma); owner sign-in uses [Supabase email/password authentication](https://supabase.com/docs/guides/auth/passwords).
 
@@ -78,9 +73,12 @@ apps/
     src/app/                  Layout, starter page, and CSS
   api/                        Headless Next.js backend
     src/app/route.ts          JSON service-status endpoint
-    src/app/api/graphql/      GraphQL Yoga route handler
-    src/lib/                  Authentication, validation, storage, and API schema
-    prisma/                   Prisma schema and reviewed-before-apply migration
+    src/pages/api/graphql.ts  Apollo Server endpoint
+    server/schemas.graphql    GraphQL schema with one auth directive per operation
+    server/resolvers.ts       Resolver registry
+    server/services/          Queries and mutations, calling Supabase through supabase-js
+    server/context.ts         Per-request Supabase client and decoded credential
+    prisma/                   Prisma schema and migrations (migration tool only)
     docs/setup.md             Backend setup and GraphQL examples
 docs/plans/                   Saved implementation plan
 package.json                  Workspace commands
@@ -113,7 +111,7 @@ The retry Shortcut will resend the original saved event IDs and payloads. This p
 
 The review app will run on your computer and be accessible from your iPhone over home Wi-Fi. It will provide:
 
-- Supabase email/password sign-in for the configured owner.
+- Supabase email/password sign-in; each user sees only their own purchases.
 - A month selector, purchase list, CAD spending total, and counts of records needing review.
 - Purchase details including merchant, amount, currency, purchase time, and whether the entry came from Apple Pay or manual input.
 - Add and edit forms for missing or incorrect purchases.
@@ -126,8 +124,8 @@ CAD is the default for manual entries. Reporting periods use **America/Toronto**
 | Component | Planned responsibility |
 | --- | --- |
 | iPhone Shortcuts | Wallet automation, local pending files, authenticated upload, and manual retry |
-| Vercel backend | Headless Next.js app with GraphQL Yoga route handlers; authentication, validation, and capture acknowledgement |
-| Prisma | Application database schema, migrations, and server-side queries |
+| Vercel backend | Headless Next.js app with an Apollo Server GraphQL endpoint; authentication, validation, and capture acknowledgement |
+| Prisma | Database migrations only; the API reads and writes through supabase-js |
 | Supabase Postgres | Persistent purchase storage with exact decimal amounts |
 | Supabase Auth | Owner sign-in for reviewing and editing purchases |
 | Local review app | Next.js mobile dashboard served from your computer; calls the owner-authenticated GraphQL API |

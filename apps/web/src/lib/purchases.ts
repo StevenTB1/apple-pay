@@ -10,7 +10,7 @@ export type Purchase = {
 };
 
 export type MonthData = {
-  transactions: Purchase[];
+  transactions: { count: number; data: Purchase[] };
   spendingSummary: {
     totalCad: string;
     includedCount: number;
@@ -21,7 +21,7 @@ export type MonthData = {
 
 export async function purchaseRequest<T>(
   token: string,
-  action: "list" | "create" | "update",
+  action: "list" | "create" | "update" | "createToken",
   variables: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
@@ -44,7 +44,7 @@ export async function purchaseRequest<T>(
   if (!response.ok || result.errors?.length || !result.data) {
     const error = result.errors?.[0];
     if (error?.extensions?.code === "UNAUTHENTICATED" || error?.extensions?.code === "FORBIDDEN") {
-      throw new Error("This account cannot access the tracker. Sign in with the configured owner account.");
+      throw new Error("Your session has expired. Sign in again.");
     }
     throw new Error(error?.message ?? "The spending service could not complete the request.");
   }

@@ -21,7 +21,7 @@ export default function PurchaseForm({ purchase, token, onSaved, onCancel }: {
         amount: String(fields.get("amount")).trim() || null,
         currency: String(fields.get("currency")).trim().toUpperCase() || null,
         // Preserve the original seconds/milliseconds when only another field is edited.
-        occurredAt: purchase && date === originalTime ? purchase.occurredAt : new Date(date).toISOString(),
+        occurred_at: purchase && date === originalTime ? purchase.occurredAt : new Date(date).toISOString(),
       };
       await purchaseRequest(token, purchase ? "update" : "create", purchase ? { id: purchase.id, input } : { input });
       onSaved();

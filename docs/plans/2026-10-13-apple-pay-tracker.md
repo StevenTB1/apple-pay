@@ -60,7 +60,7 @@ Files: `apps/api/prisma/schema.prisma`, the initial checked-in migration, `apps/
 
 Produces: transaction storage with immutable capture identity and original input alongside editable review fields.
 
-Implementation prepared: Prisma 7.10 client/configuration, PostgreSQL adapter, schema, checked-in initial SQL, canonical validation, capture/replay handling, exact CAD summary, manual entries, and row-locked corrections. The migration adds checks for money/capture shape, an immutable-metadata trigger, and RLS without client policies. It has not been applied or validated against a database. The runtime database role must own the tracker tables or bypass RLS.
+Implementation prepared: Prisma 7.10 client/configuration, PostgreSQL adapter, schema, checked-in initial SQL, canonical validation, capture/replay handling, exact CAD summary, manual entries, and row-locked corrections. The migration adds checks for money/capture shape, an immutable-metadata trigger, and revoked public access. It has not been applied or validated against a database. The runtime database role must own the tracker tables.
 
 - Generate a stable event ID on the phone before saving the pending file. Replay that same ID and input on every retry.
 - Enforce uniqueness in Postgres, so concurrent retries cannot create additional purchases.
@@ -151,7 +151,7 @@ Current verification is static-only, as explicitly requested: source review, Pri
 
 ## Backend static evidence and remaining limits
 
-`npm run prisma:validate`, `npm run lint`, `npm run typecheck`, and `npm run build` passed. The Prisma client generated successfully without connecting to the database. Source review checked owner/upload separation, unique capture replay, row-locked corrections, exact CAD aggregation, bounded JSON requests, and migration constraints/immutability/RLS. The test suites were removed at the user's request; no behavioral checks have run.
+`npm run prisma:validate`, `npm run lint`, `npm run typecheck`, and `npm run build` passed. The Prisma client generated successfully without connecting to the database. Source review checked owner/upload separation, unique capture replay, row-locked corrections, exact CAD aggregation, bounded JSON requests, and migration constraints/immutability/grants. The test suites were removed at the user's request; no behavioral checks have run.
 
 Six API build traces reference no `apps/web` source, Prisma CLI/config, `mysql2`, `deepmerge-ts`, or `braces` package files. The original web source/configuration is unchanged; Next.js refreshed its ignored generated type declaration during compilation. Dependency audit still reports nine high advisories through the Prisma CLI and Next.js ESLint toolchain, with no in-range fixes. Development dependencies remain affected; no forced downgrade or unverified override was used.
 

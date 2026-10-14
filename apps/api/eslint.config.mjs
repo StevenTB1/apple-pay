@@ -4,6 +4,6 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextTs,
   globalIgnores([
-    ".next/**", "out/**", "build/**", "next-env.d.ts", "src/generated/prisma/**",
+    ".next/**", "out/**", "build/**", "next-env.d.ts", "server/types/supabase.ts",
   ]),
 ]);

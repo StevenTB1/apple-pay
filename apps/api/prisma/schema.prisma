@@ -1,40 +1,59 @@
-generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
-}
-
 datasource db {
   provider = "postgresql"
-  schemas  = ["tracker"]
 }
 
 enum CaptureSource {
   APPLE_PAY
   MANUAL
 
-  @@schema("tracker")
+  @@map("capture_source")
+}
+
+// Rows are created by a trigger on auth.users; the id FK to auth.users lives in migration SQL.
+model User {
+  id           String        @id @db.Uuid
+  email        String?       @db.VarChar(320)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3) @map("created_at")
+  updatedAt    DateTime      @default(now()) @updatedAt @db.Timestamptz(3) @map("updated_at")
+  transactions Transaction[]
+  shortcutTokens ShortcutToken[]
+
+  @@map("users")
+}
+
+// Upload-only phone credential; only the SHA-256 of the secret is stored.
+model ShortcutToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique @db.Char(64) @map("token_hash")
+  createdAt DateTime  @default(now()) @db.Timestamptz(3) @map("created_at")
+  revokedAt DateTime? @db.Timestamptz(3) @map("revoked_at")
+
+  @@index([userId])
+  @@map("shortcut_token")
 }
 
 model Transaction {
   id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ownerId            String        @db.Uuid
+  ownerId            String        @db.Uuid @map("owner_id")
+  owner              User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   source             CaptureSource
-  sourceId           String?       @db.VarChar(100)
-  eventId            String?       @db.VarChar(128)
-  captureFingerprint String?       @db.Char(64)
-  originalCapture    Json?
-  capturedAt         DateTime?     @db.Timestamptz(3)
-  receivedAt         DateTime      @default(now()) @db.Timestamptz(3)
-  occurredAt         DateTime      @db.Timestamptz(3)
+  sourceId           String?       @db.VarChar(100) @map("source_id")
+  eventId            String?       @db.VarChar(128) @map("event_id")
+  captureFingerprint String?       @db.Char(64) @map("capture_fingerprint")
+  originalCapture    Json? @map("original_capture")
+  capturedAt         DateTime?     @db.Timestamptz(3) @map("captured_at")
+  receivedAt         DateTime      @default(now()) @db.Timestamptz(3) @map("received_at")
+  occurredAt         DateTime      @db.Timestamptz(3) @map("occurred_at")
   merchant           String?       @db.VarChar(200)
-  cardLabel          String?       @db.VarChar(100)
+  cardLabel          String?       @db.VarChar(100) @map("card_label")
   amount             Decimal?      @db.Decimal(20, 4)
   currency           String?       @db.VarChar(3)
   excluded           Boolean       @default(false)
-  updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(3) @map("updated_at")
 
   @@unique([ownerId, sourceId, eventId], name: "captureIdentity")
   @@index([ownerId, occurredAt, id])
-  @@schema("tracker")
+  @@map("transaction")
 }
