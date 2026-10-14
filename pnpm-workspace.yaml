@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+
+# pnpm runs install scripts only for packages listed here.
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - prisma
+  - sharp
+  - unrs-resolver

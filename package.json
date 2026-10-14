@@ -2,22 +2,20 @@
   "name": "apple-pay",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "apps/*"
-  ],
+  "packageManager": "pnpm@10.33.2",
   "engines": {
     "node": ">=24.0.0 <25.0.0"
   },
   "scripts": {
-    "dev": "npm run dev --workspace=@apple-pay/web",
-    "dev:api": "npm run dev --workspace=@apple-pay/api",
-    "dev:lan": "npm run dev:lan --workspace=@apple-pay/web",
-    "build": "npm run build --workspaces",
-    "start": "npm run start --workspace=@apple-pay/web",
-    "start:api": "npm run start --workspace=@apple-pay/api",
-    "lint": "npm run lint --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
-    "prisma:validate": "npm run prisma:validate --workspace=@apple-pay/api",
-    "db:migrate": "npm run db:migrate --workspace=@apple-pay/api"
+    "dev": "pnpm --filter @apple-pay/web dev",
+    "dev:api": "pnpm --filter @apple-pay/api dev",
+    "dev:lan": "pnpm --filter @apple-pay/web dev:lan",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter @apple-pay/web start",
+    "start:api": "pnpm --filter @apple-pay/api start",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "prisma:validate": "pnpm --filter @apple-pay/api prisma:validate",
+    "db:migrate": "pnpm --filter @apple-pay/api db:migrate"
   }
 }

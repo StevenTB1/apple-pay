@@ -35,16 +35,16 @@ apps/
 
 ## Local development
 
-Use Node.js 24 (`nvm use`) and install once from the repository root with `npm ci`.
+Use Node.js 24 (`nvm use`) and install once from the repository root with `pnpm install`.
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Dashboard on http://127.0.0.1:3000 |
-| `npm run dev:api` | API on http://127.0.0.1:3001 |
-| `npm run dev:lan` | Dashboard reachable from other devices on your network |
-| `npm run lint` / `npm run typecheck` / `npm run build` | Static checks for both apps |
-| `npm run prisma:validate` | Validate the Prisma schema |
-| `npm run db:migrate` | Apply checked-in migrations using `DIRECT_URL` |
+| `pnpm dev` | Dashboard on http://127.0.0.1:3000 |
+| `pnpm dev:api` | API on http://127.0.0.1:3001 |
+| `pnpm dev:lan` | Dashboard reachable from other devices on your network |
+| `pnpm lint` / `pnpm typecheck` / `pnpm build` | Static checks for both apps |
+| `pnpm prisma:validate` | Validate the Prisma schema |
+| `pnpm db:migrate` | Apply checked-in migrations using `DIRECT_URL` |
 
 There are no automated tests.
 
@@ -58,7 +58,7 @@ Copy each app's `.env.example` to `.env.local`. Real env files are ignored by Gi
 | --- | --- |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | The API's only database access. It bypasses RLS, so every service filters by the signed-in user. Server only. |
-| `DIRECT_URL` | `postgresql://` session-pooler URL (port 5432), used only by `npm run db:migrate` |
+| `DIRECT_URL` | `postgresql://` session-pooler URL (port 5432), used only by `pnpm db:migrate` |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Rate limiting. If unset, rate limiting is off. |
 
 **`apps/web`**
@@ -81,7 +81,7 @@ Supabase Postgres, `public` schema, snake_case names.
 
 RLS is on for every table. Through Supabase's Data API a signed-in user can only read their own `users` row and `transaction` rows; `shortcut_token` and Prisma's migration table are not reachable at all. The API uses the service-role key and applies the per-user filter itself.
 
-Change the schema only through a new migration in `apps/api/prisma/migrations/`, then run `npm run db:migrate`. Migrations are never part of a build or deploy. Some SQL (constraints, triggers, RLS policies, the `spending_summary` function, the link to `auth.users`) exists only in the migration files, so use `prisma migrate deploy`, not `migrate dev`.
+Change the schema only through a new migration in `apps/api/prisma/migrations/`, then run `pnpm db:migrate`. Migrations are never part of a build or deploy. Some SQL (constraints, triggers, RLS policies, the `spending_summary` function, the link to `auth.users`) exists only in the migration files, so use `prisma migrate deploy`, not `migrate dev`.
 
 ## Phone setup
 
