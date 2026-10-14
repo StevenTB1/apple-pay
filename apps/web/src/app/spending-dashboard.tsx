@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { decimalDisplay, purchaseRequest, type MonthData, type Purchase } from "@/lib/purchases";
@@ -89,7 +90,7 @@ function OwnerDashboard({ session, client, initialMonth }: { session: Session; c
   }
   return (
     <>
-      <div className="account-bar"><span className="muted">{session.user.email}</span><button className="secondary" onClick={signOut} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button></div>
+      <div className="account-bar"><span className="muted">{session.user.email}</span><Link className="nav-link" href="/insights">Insights</Link><button className="secondary" onClick={signOut} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button></div>
       {signOutError ? <p className="error" role="alert">{signOutError}</p> : null}
       <div className="month-controls">
         <label htmlFor="month">Spending month<input id="month" type="month" value={month} required onChange={(event) => {

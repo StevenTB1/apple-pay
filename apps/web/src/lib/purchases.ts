@@ -19,9 +19,21 @@ export type MonthData = {
   };
 };
 
+export type SpendingGroup = { key: string; total_cad: string; purchase_count: number };
+
+export type SpendingBreakdown = {
+  total_cad: string;
+  purchase_count: number;
+  needs_review_count: number;
+  months: SpendingGroup[];
+  cards: SpendingGroup[];
+  merchants: SpendingGroup[];
+  sources: SpendingGroup[];
+};
+
 export async function purchaseRequest<T>(
   token: string,
-  action: "list" | "create" | "update" | "createToken",
+  action: "list" | "create" | "update" | "createToken" | "breakdown",
   variables: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {

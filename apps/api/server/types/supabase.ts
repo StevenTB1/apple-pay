@@ -137,6 +137,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      spending_breakdown: {
+        Args: { p_owner_id: string; p_start?: string; p_end?: string }
+        Returns: {
+          dimension: string
+          key: string
+          purchase_count: number
+          total_cad: string
+        }[]
+      }
       spending_summary: {
         Args: { p_end: string; p_owner_id: string; p_start: string }
         Returns: {

@@ -1,3 +1,4 @@
+import { Temporal } from "@js-temporal/polyfill";
 import type { Context } from "@/server/context";
 import {
   canonicalDecimal, monthBounds, normalizeCorrection, normalizeManualInput,
@@ -64,6 +65,61 @@ const getSpendingSummary = async (_obj: unknown, args: { month: string }, contex
   return data;
 };
 
+// Every YYYY-MM from first to last inclusive, so a chart shows empty months as zero instead of skipping them.
+function monthKeys(first: string, last: string): string[] {
+  const keys: string[] = [];
+  for (let month = Temporal.PlainYearMonth.from(first); Temporal.PlainYearMonth.compare(month, last) <= 0; month = month.add({ months: 1 })) {
+    keys.push(month.toString());
+  }
+  return keys;
+}
+
+const getSpendingBreakdown = async (
+  _obj: unknown,
+  args: { from_month?: string | null; to_month?: string | null },
+  context: Context,
+) => {
+  const { from_month, to_month } = args;
+  const { supabase } = context;
+  const user_id = requireUserId(context);
+
+  const p_start = from_month ? monthBounds(from_month).start : undefined;
+  const p_end = to_month ? monthBounds(to_month).end : undefined;
+  if (from_month && to_month && from_month > to_month) throw inputError("from_month must not be after to_month.");
+
+  const { data, error } = await supabase.rpc("spending_breakdown", { p_owner_id: user_id, p_start, p_end });
+  if (error) throw error;
+
+  const row = (dimension: string) => data.find((group) => group.dimension === dimension);
+  const groups = (dimension: string) =>
+    data
+      .filter((group) => group.dimension === dimension)
+      .map(({ key, total_cad, purchase_count }) => ({ key, total_cad, purchase_count }))
+      .sort((a, b) => Number(b.total_cad) - Number(a.total_cad));
+
+  return {
+    total_cad: row("all")?.total_cad ?? "0.00",
+    purchase_count: row("all")?.purchase_count ?? 0,
+    needs_review_count: row("needs_review")?.purchase_count ?? 0,
+    months: fillMonths(groups("month"), from_month, to_month),
+    cards: groups("card"),
+    merchants: groups("merchant"),
+    sources: groups("source"),
+  };
+};
+
+function fillMonths(months: { key: string; total_cad: string; purchase_count: number }[], from?: string | null, to?: string | null) {
+  const found = new Map(months.map((month) => [month.key, month]));
+  const keys = [...found.keys()].sort();
+  const first = from ?? keys[0];
+  const last = to ?? keys.at(-1);
+  if (!first || !last) return [];
+  if (Temporal.PlainYearMonth.from(first).until(last).total({ unit: "months", relativeTo: `${first}-01` }) > 1200) {
+    throw inputError("The month range may cover at most 100 years.");
+  }
+  return monthKeys(first, last).map((key) => found.get(key) ?? { key, total_cad: "0.00", purchase_count: 0 });
+}
+
 const createManualTransaction = async (_obj: unknown, args: { input: unknown }, context: Context) => {
   const { supabase } = context;
   const user_id = requireUserId(context);
@@ -123,6 +179,7 @@ const updateTransaction = async (
 export const TRANSACTION_QUERIES = {
   getTransactions,
   getSpendingSummary,
+  getSpendingBreakdown,
 };
 
 export const TRANSACTION_MUTATIONS = {

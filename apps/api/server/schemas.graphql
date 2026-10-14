@@ -19,6 +19,7 @@ type Query {
   # Transactions
   getTransactions(month: String!, limit: Int = 50, offset: Int = 0): Transactions @authenticated
   getSpendingSummary(month: String!): SpendingSummary @authenticated
+  getSpendingBreakdown(from_month: String, to_month: String): SpendingBreakdown @authenticated
 }
 
 # ------------------------------------------------------------------------------
@@ -70,6 +71,23 @@ type SpendingSummary {
   included_count: Int!
   needs_review_count: Int!
   excluded_count: Int!
+}
+
+# CAD-only totals for from_month..to_month inclusive (either optional); empty months are zero, the rest is needs_review_count.
+type SpendingBreakdown {
+  total_cad: String!
+  purchase_count: Int!
+  needs_review_count: Int!
+  months: [SpendingGroup!]!
+  cards: [SpendingGroup!]!
+  merchants: [SpendingGroup!]!
+  sources: [SpendingGroup!]!
+}
+
+type SpendingGroup {
+  key: String!
+  total_cad: String!
+  purchase_count: Int!
 }
 
 input ManualTransactionInput {

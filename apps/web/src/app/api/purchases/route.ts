@@ -5,6 +5,13 @@ const operations = {
     spendingSummary: getSpendingSummary(month: $month) { totalCad: total_cad includedCount: included_count needsReviewCount: needs_review_count excludedCount: excluded_count }
   }`,
   create: `mutation Add($input: ManualTransactionInput!) { createManualTransaction(input: $input) { ${fields} } }`,
+  breakdown: `query Breakdown($from_month: String, $to_month: String) {
+    breakdown: getSpendingBreakdown(from_month: $from_month, to_month: $to_month) {
+      total_cad purchase_count needs_review_count
+      months { key total_cad purchase_count } cards { key total_cad purchase_count }
+      merchants { key total_cad purchase_count } sources { key total_cad purchase_count }
+    }
+  }`,
   createToken: `mutation { createShortcutToken { token } }`,
   update: `mutation Correct($id: ID!, $input: TransactionCorrectionInput!) { updateTransaction(transaction_id: $id, input: $input) { ${fields} } }`,
 };
