@@ -70,7 +70,7 @@ In a summary, complete CAD purchases that are not excluded make up `total_cad`. 
 The server fills in what is missing: `event_id` is generated, `captured_at` is the arrival time, the amount is parsed from the text (`$12.30`, `CA$1,234.50`, `12,30 $`), and the currency is inferred (`US$`, `€`, `£`, a three-letter code, or CAD for a bare `$`). Unreadable values are saved as unknown, not rejected, and the exact input is stored in `original_capture.received`.
 
 ```sh
-curl -X POST https://apple-pay-api.vercel.app/api/graphql/capture \
+curl -X POST https://<your-api>.vercel.app/api/graphql/capture \
   -H "Authorization: Bearer ap_…" -H "Content-Type: application/json" \
   -d '{"merchant":"Coffee shop","amount":"$4.50","card":"Visa"}'
 # {"transaction_id":"…","event_id":"…","duplicate":false}

@@ -2,9 +2,6 @@
 
 Records Apple Pay purchases from an iPhone Shortcut and shows monthly CAD spending in a web dashboard.
 
-- Dashboard: https://apple-pay-web.vercel.app
-- API: https://apple-pay-api.vercel.app
-
 ## How it works
 
 1. A Wallet automation on the iPhone runs after a payment with a selected card.
@@ -88,7 +85,7 @@ Change the schema only through a new migration in `apps/api/prisma/migrations/`,
 1. Sign in to the dashboard and press **Create phone token**. Copy the `ap_…` value; it is shown once, and creating another revokes it.
 2. In Shortcuts → Automation, add a **Wallet** (Transaction) automation for your cards, set to **Run Immediately**, that runs a new shortcut.
 3. In that shortcut add **Get Contents of URL**:
-   - URL: `https://apple-pay-api.vercel.app/api/graphql/capture`
+   - URL: `https://<your-api>.vercel.app/api/graphql/capture`
    - Method: `POST`
    - Header: `Authorization` = `Bearer ap_…`
    - Request Body: **File** = **Shortcut Input**
@@ -105,3 +102,7 @@ Two Vercel projects, `apple-pay-api` (root directory `apps/api`) and `apple-pay-
 - Totals are CAD only, with no currency conversion. Months use America/Toronto.
 - Editing a purchase does not lock the row, so two simultaneous edits can produce a validation error.
 - Rate limiting fails open: if Upstash is unreachable, requests are allowed.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
